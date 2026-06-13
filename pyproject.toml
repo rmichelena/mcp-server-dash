@@ -37,7 +37,7 @@ mcp-server-dash = "mcp_server_dash:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-py-modules = ["mcp_server_dash", "dash_api", "renderer", "token_store"]
+py-modules = ["mcp_server_dash", "auth_pkce", "dash_api", "renderer", "token_store"]
 
 [tool.black]
 line-length = 100
@@ -75,7 +75,7 @@ line-ending = "lf"
 
 [tool.ruff.lint.isort]
 combine-as-imports = true
-known-first-party = ["mcp_server_dash", "dash_api", "renderer", "token_store"]
+known-first-party = ["mcp_server_dash", "auth_pkce", "dash_api", "renderer", "token_store"]
 
 [tool.mypy]
 python_version = "3.10"

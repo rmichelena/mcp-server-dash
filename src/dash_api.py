@@ -146,11 +146,15 @@ class DashAPI:
                         )
                         await asyncio.sleep(delay)
                         continue
+                # Non-retryable HTTP error (4xx except 401/429) — raise immediately
                 resp.raise_for_status()
                 return resp
             except PermissionError:
                 raise
-            except Exception as e:  # network or other errors
+            except httpx.HTTPStatusError:
+                # Non-retryable HTTP error — raise immediately, no retry
+                raise
+            except Exception as e:  # network or other transient errors
                 last_exc = e
                 if attempt < self._max_retries:
                     delay = self._backoff_base * (2 ** (attempt - 1))
@@ -161,7 +165,6 @@ class DashAPI:
         # After retries exhausted
         if last_exc:
             raise last_exc
-        raise RuntimeError("Request failed with no response and no exception")
 
     async def search(self, req: DashSearchRequest) -> DashSearchResponse:
         body: dict[str, Any] = {

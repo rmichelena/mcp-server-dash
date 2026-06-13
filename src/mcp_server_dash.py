@@ -37,12 +37,7 @@ except ImportError:  # pragma: no cover - allow running tests without SDK
 # Single assignment for type-checkers
 dropbox: Any = dropbox_mod
 
-# Configure logging to stderr only with env-controlled level
-_level_name = os.getenv("LOG_LEVEL", "WARNING").upper()
-_level = getattr(logging, _level_name, logging.WARNING)
-logging.basicConfig(
-    level=_level, stream=sys.stderr, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+# Configure logging — defer basicConfig to main() to avoid polluting root logger on import
 logger = logging.getLogger(__name__)
 
 # Load APP_KEY from environment and optional .env file
@@ -51,7 +46,6 @@ APP_KEY = os.getenv("APP_KEY")
 
 
 token_store = DropboxTokenStore()
-token_store.load()
 
 # PKCE authentication flow handler
 pkce_flow = PKCEAuthFlow()
@@ -206,7 +200,6 @@ async def dash_authenticate(auth_code: str) -> str:
     - A successful authentication persists a token using the local token store, so it usually
       only needs to be performed once until the token expires or is revoked.
     """
-    global token_store
     try:
         # Type assertion: @require_app_key decorator guarantees APP_KEY is set
         assert APP_KEY is not None
@@ -224,9 +217,9 @@ async def dash_authenticate(auth_code: str) -> str:
         if dropbox is None:
             return "Dropbox SDK is not installed. Please install 'dropbox' to authenticate."
 
-        # Validate by fetching account
+        # Validate by fetching account (run blocking SDK call in thread)
         dbx = dropbox.Dropbox(access_token)
-        account = dbx.users_get_current_account()
+        account = await asyncio.to_thread(dbx.users_get_current_account)
 
         try:
             token_store.save(access_token, token_data.get("refresh_token"))
@@ -594,8 +587,20 @@ def _format_file_details_response(resp: GetLinkMetadataResponse, uuid: str) -> s
     return text.rstrip()
 
 
+def _configure_logging() -> None:
+    """Configure logging to stderr only with env-controlled level."""
+    _level_name = os.getenv("LOG_LEVEL", "WARNING").upper()
+    _level = getattr(logging, _level_name, logging.WARNING)
+    logging.basicConfig(
+        level=_level, stream=sys.stderr,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+
+
 def main() -> None:
     """Main entry point with support for both stdio and server modes."""
+    _configure_logging()
+    token_store.load()
     # Handle --clear-token flag
     if _args.clear_token:
         from token_store import clear_token_interactive

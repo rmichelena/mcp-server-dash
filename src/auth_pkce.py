@@ -107,7 +107,7 @@ class PKCEAuthFlow:
 
         try:
             # Exchange authorization code for access token with PKCE
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
                 token_response = await client.post(
                     "https://api.dropboxapi.com/oauth2/token",
                     data={
