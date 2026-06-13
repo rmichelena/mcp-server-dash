@@ -123,7 +123,8 @@ _args = (
     _parse_args()
     if __name__ == "__main__"
     else argparse.Namespace(
-        mode="stdio", host="127.0.0.1", port=8000, ssl_keyfile=None, ssl_certfile=None
+        mode="stdio", host="127.0.0.1", port=8000, clear_token=False,
+        ssl_keyfile=None, ssl_certfile=None,
     )
 )
 
@@ -332,7 +333,7 @@ async def dash_company_search(
             resp = await api.search(req)
         except PermissionError:
             # Token may be expired — try refresh before giving up
-            if token_store.try_refresh():
+            if await asyncio.to_thread(token_store.try_refresh):
                 api = DashAPI(token_store.access_token or "")
                 resp = await api.search(req)
             else:
@@ -382,7 +383,7 @@ async def dash_get_file_details(uuid: str) -> str:
         try:
             resp = await api.get_link_metadata(req)
         except PermissionError:
-            if token_store.try_refresh():
+            if await asyncio.to_thread(token_store.try_refresh):
                 api = DashAPI(token_store.access_token or "")
                 resp = await api.get_link_metadata(req)
             else:
@@ -587,26 +588,33 @@ def _format_file_details_response(resp: GetLinkMetadataResponse, uuid: str) -> s
     return text.rstrip()
 
 
-def _configure_logging() -> None:
-    """Configure logging to stderr only with env-controlled level."""
+def _configure_logging() -> str:
+    """Configure logging to stderr only with env-controlled level.
+
+    Returns the resolved log level name (lowercase) for downstream use
+    (e.g. uvicorn log_level).
+    """
     _level_name = os.getenv("LOG_LEVEL", "WARNING").upper()
     _level = getattr(logging, _level_name, logging.WARNING)
     logging.basicConfig(
         level=_level, stream=sys.stderr,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
+    return _level_name.lower()
 
 
 def main() -> None:
     """Main entry point with support for both stdio and server modes."""
-    _configure_logging()
-    token_store.load()
-    # Handle --clear-token flag
+    log_level_name = _configure_logging()
+
+    # Handle --clear-token flag before any network calls
     if _args.clear_token:
         from token_store import clear_token_interactive
 
         clear_token_interactive()
         sys.exit(0)
+
+    token_store.load()
 
     if _args.mode == "server":
         # Server mode with SSE transport
@@ -649,7 +657,7 @@ def main() -> None:
                 starlette_app,
                 host=_args.host,
                 port=_args.port,
-                log_level=_level_name.lower(),
+                log_level=log_level_name,
                 ssl_keyfile=_args.ssl_keyfile,
                 ssl_certfile=_args.ssl_certfile,
             )
