@@ -283,8 +283,8 @@ async def dash_company_search(
     Returns (text):
     - A formatted list of results. Each result contains predictable, labeled fields such as:
       "UUID:", "Type:", "URL:", "Preview:", "Description:", "File Type:", "MIME Type:",
-      "Source:", "Creator:", "Last Modified By:", "Updated:", "Source Updated:",
-      "Relevance:", "Source ID:". Results are separated by a divider line.
+      "Source:", "Platform Type:", "Source File ID:", "Creator:", "Last Modified By:", "Updated:", "Source Updated:",
+      "Relevance:". Results are separated by a divider line.
 
     Errors:
     - If unauthenticated, returns a human-readable instruction to re-authenticate.
@@ -295,6 +295,9 @@ async def dash_company_search(
     - If the user is already authenticated (token cached), this tool can be called directly;
       otherwise guide them through `dash_get_auth_url` → `dash_authenticate`.
     - Use the returned "UUID" to fetch details with `dash_get_file_details(uuid)`.
+    - Use the "Source File ID" (id_3p) for direct API access: Dropbox file IDs
+      (format "id:...") resolve to paths via files_get_metadata; Google Drive IDs
+      are usable directly with the Drive API.
     - Result formatting is stable: each line begins with an optional emoji, then a label and a
       colon (e.g., "🔑 UUID: …"). The divider consists of 50 em dashes.
     """
@@ -447,6 +450,8 @@ def _format_search_response(resp: DashSearchResponse, query: str) -> str:
             FieldSpec("File Type", "file_type_info.display_name", "📁"),
             FieldSpec("MIME Type", "mime_type", "🔧"),
             FieldSpec("Source", "connector_info.connector_id", "🔌"),
+            FieldSpec("Platform Type", "branded_type", "🏷️"),
+            FieldSpec("Source File ID", "id_3p", "🆔"),
             FieldSpec("Creator", "creator", "✏️", people_name),
             FieldSpec("Last Modified By", "last_modifier", "🔄", people_name),
             FieldSpec("Updated", "updated_at_ms", "📅", lambda v, d: _format_ts(v)),
@@ -462,7 +467,6 @@ def _format_search_response(resp: DashSearchResponse, query: str) -> str:
                 "⭐",
                 lambda v, d: f"{v:.2f}" if isinstance(v, int | float) and v > 0 else None,
             ),
-            FieldSpec("Source ID", "upstream_id", "🔗"),
         ]
         block = render_section(None, specs, data).rstrip()
         if block:
