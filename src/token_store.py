@@ -141,7 +141,7 @@ class DropboxTokenStore:
             # Try access token first
             if access_token:
                 try:
-                    dbx = dropbox.Dropbox(access_token)
+                    dbx = dropbox.Dropbox(access_token, timeout=30)
                     dbx.users_get_current_account()
                     self.access_token = access_token
                     self.refresh_token = refresh_token
@@ -166,7 +166,7 @@ class DropboxTokenStore:
                 if new_access:
                     self.access_token = new_access
                     self.refresh_token = refresh_token
-                    self.dbx = dropbox.Dropbox(new_access)
+                    self.dbx = dropbox.Dropbox(new_access, timeout=30)
                     # Persist refreshed token to all backends
                     self._persist(new_access, refresh_token)
                     logger.info("Successfully refreshed access token")
@@ -196,7 +196,7 @@ class DropboxTokenStore:
         app_key = os.environ.get("APP_KEY")
         if not app_key:
             logger.error("APP_KEY not set, cannot refresh token")
-            return None
+            raise TransientRefreshError("APP_KEY not set — credentials preserved")
 
         try:
             with httpx.Client(timeout=30) as client:
@@ -212,7 +212,7 @@ class DropboxTokenStore:
             raise TransientRefreshError(f"Network error during token refresh: {e}") from e
 
         # 5xx — server error, may be transient
-        if resp.status_code >= 500:
+        if resp.status_code >= 500 or resp.status_code == 429:
             raise TransientRefreshError(
                 f"Dropbox server error {resp.status_code} during token refresh"
             )
@@ -244,7 +244,7 @@ class DropboxTokenStore:
             return False
         if new_access:
             self.access_token = new_access
-            self.dbx = dropbox.Dropbox(new_access)
+            self.dbx = dropbox.Dropbox(new_access, timeout=30)
             self._persist(new_access, self.refresh_token)
             logger.info("Runtime token refresh succeeded")
             return True
@@ -288,7 +288,11 @@ class DropboxTokenStore:
             logger.debug("Tokens saved to keyring successfully")
             return
 
-        # Keyring partially or fully failed — fall back to file for BOTH tokens
+        # Keyring partially or fully failed — clean up any partial writes
+        # and fall back to file for BOTH tokens
+        if access_ok:
+            with suppress(Exception):
+                keyring.delete_password(KEYRING_SERVICE, KEYRING_ACCESS_USERNAME)
         logger.warning("Keyring partially or fully unavailable, falling back to file storage")
         self._save_to_file(access_token, refresh_token)
 
@@ -301,7 +305,7 @@ class DropboxTokenStore:
 
         self.access_token = token
         self.refresh_token = refresh_token
-        self.dbx = dropbox.Dropbox(token)
+        self.dbx = dropbox.Dropbox(token, timeout=30)
 
 
 def clear_token_interactive() -> None:

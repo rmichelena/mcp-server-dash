@@ -118,14 +118,11 @@ def _parse_args():
     return parser.parse_args()
 
 
-# Parse args to get configuration for FastMCP initialization
-_args = (
-    _parse_args()
-    if __name__ == "__main__"
-    else argparse.Namespace(
-        mode="stdio", host="127.0.0.1", port=8000, clear_token=False,
-        ssl_keyfile=None, ssl_certfile=None,
-    )
+# Default args for module import (tests, MCP Inspector, etc.)
+# Real CLI parsing happens in main() when run as the console entry point.
+_args = argparse.Namespace(
+    mode="stdio", host="127.0.0.1", port=8000, clear_token=False,
+    ssl_keyfile=None, ssl_certfile=None,
 )
 
 # Initialize fastmcp app with appropriate host/port for server mode
@@ -219,7 +216,7 @@ async def dash_authenticate(auth_code: str) -> str:
             return "Dropbox SDK is not installed. Please install 'dropbox' to authenticate."
 
         # Validate by fetching account (run blocking SDK call in thread)
-        dbx = dropbox.Dropbox(access_token)
+        dbx = dropbox.Dropbox(access_token, timeout=30)
         account = await asyncio.to_thread(dbx.users_get_current_account)
 
         try:
@@ -605,7 +602,13 @@ def _configure_logging() -> str:
 
 def main() -> None:
     """Main entry point with support for both stdio and server modes."""
+    global _args
+    _args = _parse_args()
     log_level_name = _configure_logging()
+
+    # Update FastMCP host/port from parsed args (in case server mode was requested)
+    mcp.settings.host = _args.host
+    mcp.settings.port = _args.port
 
     # Handle --clear-token flag before any network calls
     if _args.clear_token:

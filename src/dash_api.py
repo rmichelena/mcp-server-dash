@@ -165,6 +165,7 @@ class DashAPI:
         # After retries exhausted
         if last_exc:
             raise last_exc
+        raise RuntimeError("Retry loop exited without response or exception")
 
     async def search(self, req: DashSearchRequest) -> DashSearchResponse:
         body: dict[str, Any] = {

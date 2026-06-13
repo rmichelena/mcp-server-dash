@@ -38,7 +38,7 @@ def setup_store(tmp_path, monkeypatch, keyring_available=True):
     """Helper to setup store with fake keyring and dropbox."""
     fake_keyring = FakeKeyring()
     monkeypatch.setattr(ts, "keyring", fake_keyring)
-    monkeypatch.setattr(ts.dropbox, "Dropbox", lambda token: FakeDropbox(token, valid=True))
+    monkeypatch.setattr(ts.dropbox, "Dropbox", lambda token, **kw: FakeDropbox(token, valid=True))
 
     if not keyring_available:
         fake_keyring.set_password = Mock(side_effect=RuntimeError("Keyring unavailable"))
@@ -85,7 +85,7 @@ def test_load_invalid_token_with_refresh_succeeds(tmp_path, monkeypatch):
 
     # First call with expired access fails, then _do_refresh returns new token
     call_count = [0]
-    def fake_dropbox(token):
+    def fake_dropbox(token, **kw):
         call_count[0] += 1
         if call_count[0] == 1:
             return FakeDropbox(token, valid=False)
@@ -107,7 +107,7 @@ def test_load_invalid_token_with_refresh_fails_clears(tmp_path, monkeypatch):
     keyring.set_password(ts.KEYRING_SERVICE, ts.KEYRING_ACCESS_USERNAME, "expired")
     keyring.set_password(ts.KEYRING_SERVICE, ts.KEYRING_REFRESH_USERNAME, "bad_refresh")
 
-    monkeypatch.setattr(ts.dropbox, "Dropbox", lambda token: FakeDropbox(token, valid=False))
+    monkeypatch.setattr(ts.dropbox, "Dropbox", lambda token, **kw: FakeDropbox(token, valid=False))
     monkeypatch.setattr(store, "_do_refresh", lambda rt: None)
 
     assert not store.load()
@@ -141,7 +141,7 @@ def test_load_network_error_does_not_clear(tmp_path, monkeypatch):
 def test_load_invalid_token_clears_state(tmp_path, monkeypatch):
     store, keyring = setup_store(tmp_path, monkeypatch)
     keyring.set_password(ts.KEYRING_SERVICE, ts.KEYRING_ACCESS_USERNAME, "bad_token")
-    monkeypatch.setattr(ts.dropbox, "Dropbox", lambda token: FakeDropbox(token, valid=False))
+    monkeypatch.setattr(ts.dropbox, "Dropbox", lambda token, **kw: FakeDropbox(token, valid=False))
 
     assert not store.load()
     assert not store.is_authenticated
@@ -228,7 +228,7 @@ def test_load_generic_exception(tmp_path, monkeypatch):
     store, keyring = setup_store(tmp_path, monkeypatch)
     keyring.set_password(ts.KEYRING_SERVICE, ts.KEYRING_ACCESS_USERNAME, "test_token")
     monkeypatch.setattr(
-        ts.dropbox, "Dropbox", lambda token: (_ for _ in ()).throw(Exception("Error"))
+        ts.dropbox, "Dropbox", lambda token, **kw: (_ for _ in ()).throw(Exception("Error"))
     )
 
     assert not store.load()
@@ -317,7 +317,7 @@ def test_load_refresh_transient_does_not_clear(tmp_path, monkeypatch):
     keyring.set_password(ts.KEYRING_SERVICE, ts.KEYRING_ACCESS_USERNAME, "expired_access")
     keyring.set_password(ts.KEYRING_SERVICE, ts.KEYRING_REFRESH_USERNAME, "valid_refresh")
 
-    monkeypatch.setattr(ts.dropbox, "Dropbox", lambda token: FakeDropbox(token, valid=False))
+    monkeypatch.setattr(ts.dropbox, "Dropbox", lambda token, **kw: FakeDropbox(token, valid=False))
 
     def raise_transient(rt):
         raise ts.TransientRefreshError("Server unreachable")
